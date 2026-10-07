@@ -1,0 +1,110 @@
+# AgentCtrlV 配置样例（完整）
+# 复制为 config.yaml 后使用
+
+app:
+  hotkeys:
+    dispatch_clipboard: "Alt+V"
+    dispatch_screenshot: "Alt+S"
+    resend_last: "Alt+Shift+V"
+  triggers:
+    listen_screenshot_dir: false
+    listen_clipboard_image: false
+    listen_clipboard_text: false
+  behavior:
+    restore_clipboard: true
+    auto_enter: false
+    multi_target_delay: 800
+    multi_target_max: 5
+
+agents:
+  - id: chatgpt-desktop
+    name: "ChatGPT"
+    type: gui
+    enabled: true
+    process: "ChatGPT.exe"
+    launch: "shell:AppsFolder\\OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0!ChatGPT"
+    window:
+      title_pattern: "ChatGPT*"
+      multi_instance: "recent"
+    locate:
+      method: "uia"
+      uia_control: "DocumentControl"
+      uia_search_depth: 10
+      uia_timeout: 1000
+      click_coords: [960, 800]
+    inject:
+      method: "clipboard"
+      paste_delay: 300
+      render_delay: 500
+      auto_enter: false
+    cold_start:
+      new_session: true
+      new_session_method: "hotkey"
+      new_session_hotkey: "Ctrl+N"
+      ready_timeout: 8000
+      ui_ready_timeout: 3000
+    hot_start:
+      reuse_session: true
+      clear_input: false
+    permissions: "normal"
+    supported_payloads: ["image", "text"]
+    icon: "assets/icons/chatgpt.png"
+
+  - id: cursor
+    name: "Cursor"
+    type: gui
+    enabled: true
+    process: "Cursor.exe"
+    launch: ""  # 使用默认安装路径或用户配置
+    window:
+      title_pattern: "Cursor*"
+      multi_instance: "recent"
+    locate:
+      method: "uia"
+      uia_control: "EditControl"
+      uia_search_depth: 12
+      uia_timeout: 1000
+    inject:
+      method: "clipboard"
+      paste_delay: 300
+      render_delay: 500
+      auto_enter: false
+    cold_start:
+      new_session: false
+      new_session_method: "none"
+      ready_timeout: 8000
+      ui_ready_timeout: 3000
+    hot_start:
+      reuse_session: true
+      clear_input: false
+    permissions: "normal"
+    supported_payloads: ["image", "text"]
+    icon: "assets/icons/cursor.png"
+
+  - id: windows-terminal
+    name: "Windows Terminal"
+    type: cli
+    enabled: true
+    process: "WindowsTerminal.exe"
+    launch: "wt.exe"
+    window:
+      title_pattern: "*"
+      multi_instance: "recent"
+    locate:
+      method: "blind"
+    inject:
+      method: "clipboard"
+      paste_delay: 200
+      render_delay: 300
+      auto_enter: false
+    cold_start:
+      new_session: false
+      new_session_method: "none"
+      ready_timeout: 5000
+      ui_ready_timeout: 2000
+    hot_start:
+      reuse_session: true
+      clear_input: false
+    permissions: "normal"
+    supported_payloads: ["text"]
+    icon: "assets/icons/terminal.png"

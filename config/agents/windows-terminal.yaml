@@ -1,0 +1,27 @@
+id: windows-terminal
+name: "Windows Terminal"
+type: cli
+enabled: true
+process: "WindowsTerminal.exe"
+launch: "wt.exe"
+window:
+  title_pattern: "*"
+  multi_instance: "recent"
+locate:
+  method: "blind"
+inject:
+  method: "clipboard"
+  paste_delay: 200
+  render_delay: 300
+  auto_enter: false
+cold_start:
+  new_session: false
+  new_session_method: "none"
+  ready_timeout: 5000
+  ui_ready_timeout: 2000
+hot_start:
+  reuse_session: true
+  clear_input: false
+permissions: "normal"
+supported_payloads: ["text"]
+icon: "assets/icons/terminal.png"
