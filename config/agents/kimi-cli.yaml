@@ -1,0 +1,17 @@
+id: kimi-cli
+name: "Kimi CLI"
+type: cli
+enabled: true
+process: "WindowsTerminal.exe"
+cli_match: "kimi.exe"
+window:
+  title_pattern: "*"
+  multi_instance: "recent"
+inject:
+  method: "clipboard"
+  paste_delay: 200
+  render_delay: 300
+  auto_enter: false
+permissions: "normal"
+supported_payloads: ["text"]
+icon: "assets/agents/kimi-cli.png"

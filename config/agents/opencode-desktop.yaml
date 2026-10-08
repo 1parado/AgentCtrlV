@@ -1,0 +1,20 @@
+id: opencode-desktop
+name: "OpenCode"
+type: gui
+enabled: true
+process: "OpenCode.exe"
+window:
+  title_pattern: "OpenCode*"
+  multi_instance: "recent"
+locate:
+  method: "uia"
+  uia_control: "EditControl"
+  uia_timeout: 1000
+inject:
+  method: "clipboard"
+  paste_delay: 300
+  render_delay: 500
+  auto_enter: false
+permissions: "normal"
+supported_payloads: ["image", "text"]
+icon: "assets/agents/opencode-desktop.png"

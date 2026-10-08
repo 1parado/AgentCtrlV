@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Virtualenv
+.venv/
+venv/
+
+# Runtime artifacts (M1 acceptance produces clipboard.png in CWD)
+clipboard.png
+_selftest_state.json
+*.log
+logs/
+config/config.yaml
+build/
+dist/
+*.spec
+
+# scripts/e2e_real_app.py 的验证截图
+# 这些是本人屏幕截图，可能含聊天内容/项目信息，绝不进仓库
+e2e_before.png
+e2e_after.png
+menu_preview.png
+
+# 从本机已安装程序里提取的第三方应用图标（Claude / Windows Terminal /
+# ZCode / WorkBuddy / Kimi / OpenCode 等）——那是各家的商标与美术资产，
+# 不适合由本项目再分发，所以不入库；换机器用下面这条命令本地重新生成：
+#     python scripts/extract_icons.py
+assets/agents/
+
+
+# 1254x1254 设计母版：2MB 且非运行所需（app.png/app.ico 才是），
+# 留在本地不入库
+assets/icons/app-master.png

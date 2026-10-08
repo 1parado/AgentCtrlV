@@ -1,0 +1,19 @@
+# Codex CLI 是 npm 包装的 node 程序，进程名是 node.exe，
+# 所以用命令行片段识别（实测入口为 @openai/codex 的 bin/codex.js）
+id: codex-cli
+name: "Codex CLI"
+type: cli
+enabled: true
+process: "WindowsTerminal.exe"
+cli_match: "codex.js"
+window:
+  title_pattern: "*"
+  multi_instance: "recent"
+inject:
+  method: "clipboard"
+  paste_delay: 200
+  render_delay: 300
+  auto_enter: false
+permissions: "normal"
+supported_payloads: ["text"]
+icon: null   # 该系统程序没有内嵌图标，菜单退回字母头像

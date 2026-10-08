@@ -1,0 +1,18 @@
+# 同样是 npm 包装的 node 程序，用包路径片段识别
+id: gemini-cli
+name: "Gemini CLI"
+type: cli
+enabled: true
+process: "WindowsTerminal.exe"
+cli_match: "@google/gemini-cli"
+window:
+  title_pattern: "*"
+  multi_instance: "recent"
+inject:
+  method: "clipboard"
+  paste_delay: 200
+  render_delay: 300
+  auto_enter: false
+permissions: "normal"
+supported_payloads: ["text"]
+icon: null   # 该系统程序没有内嵌图标，菜单退回字母头像

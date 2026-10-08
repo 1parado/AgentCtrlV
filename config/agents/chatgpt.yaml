@@ -1,7 +1,8 @@
+# 本机未检测到该应用（探测于 2026-10）；安装后把 enabled 改回 true。
 id: chatgpt-desktop
 name: "ChatGPT"
 type: gui
-enabled: true
+enabled: false   # 本机未安装；装上后改成 true 即可进菜单
 process: "ChatGPT.exe"
 launch: "shell:AppsFolder\\OpenAI.ChatGPT-Desktop_2p2nqsd0c76g0!ChatGPT"
 window:
@@ -29,4 +30,4 @@ hot_start:
   clear_input: false
 permissions: "normal"
 supported_payloads: ["image", "text"]
-icon: "assets/icons/chatgpt.png"
+icon: null   # 本机未安装，未提取图标；菜单退回字母头像

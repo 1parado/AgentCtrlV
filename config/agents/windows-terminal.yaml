@@ -24,4 +24,4 @@ hot_start:
   clear_input: false
 permissions: "normal"
 supported_payloads: ["text"]
-icon: "assets/icons/terminal.png"
+icon: "assets/agents/windows-terminal.png"

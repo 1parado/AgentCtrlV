@@ -1,0 +1,18 @@
+# CLI Agent：没有自己的窗口，注入目标是宿主终端
+id: claude-code
+name: "Claude Code"
+type: cli
+enabled: true
+process: "WindowsTerminal.exe"     # 宿主终端
+cli_match: "claude.exe"            # 终端里真正在跑的东西
+window:
+  title_pattern: "*"
+  multi_instance: "recent"
+inject:
+  method: "clipboard"
+  paste_delay: 200
+  render_delay: 300
+  auto_enter: false
+permissions: "normal"
+supported_payloads: ["text"]
+icon: "assets/agents/claude-code.png"
