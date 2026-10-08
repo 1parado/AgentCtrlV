@@ -45,8 +45,8 @@ def _behaviour_sources() -> list[str]:
     """只搜"真正驱动行为"的代码。
 
     刻意排除两个文件：
-    - gents.py：字段当然会出现在模型定义里
-    - gent_warnings.py：那里提到字段，恰恰是为了说**它没被用上**；
+    - `agents.py`：字段当然会出现在模型定义里
+    - `agent_warnings.py`：那里提到字段，恰恰是为了说**它没被用上**；
       把它算成"已读取"，等于让检查自己骗自己（这个坑当场就踩到了）
     """
     excluded = {"agents.py", "agent_warnings.py"}
