@@ -16,8 +16,9 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from src.core.agent_warnings import warn_ineffective_options
 from src.utils.logger import get_logger
 
 AGENTS_DIR = Path("config/agents")
@@ -127,6 +128,18 @@ class AgentSpec(BaseModel):
         """
         return bool(self.launch.strip())
 
+    @model_validator(mode="after")
+    def _apply_type_defaults(self) -> "AgentSpec":
+        """CONFIG_SCHEMA 约束：CLI 类型 Agent 默认只收文本。
+
+        没写 `supported_payloads` 时按 `type` 补默认值。不补的话
+        `type: cli` 就只是个装饰字段——写了不影响任何行为，
+        而文档却承诺了这条默认值。
+        """
+        if not self.supported_payloads:
+            self.supported_payloads = ["text"] if self.type == "cli" else ["image", "text"]
+        return self
+
     # --- 便捷读取，避免调用方到处走 window./inject. ---
     @property
     def title_pattern(self) -> str:
@@ -195,50 +208,6 @@ def _load_directory(base: Path, log) -> list[AgentSpec]:
     return specs
 
 
-def _warn_ineffective_options(specs: list[AgentSpec], log) -> None:
-    """把"配置里写了、但 v0.1 不会生效"的项大声说出来。
-
-    沉默地忽略配置是最糟的一种失败：用户以为配了、实际没有。
-    """
-    for spec in specs:
-        if spec.inject.auto_enter:
-            log.warning(
-                "Agent %s 配了 inject.auto_enter=true，但 v0.1 禁止自动回车，该项不生效",
-                spec.id,
-            )
-        if spec.inject.method != "clipboard":
-            log.warning(
-                "Agent %s 配了 inject.method=%s，但 M1-M4 只实现了 clipboard 注入，该项不生效",
-                spec.id,
-                spec.inject.method,
-            )
-        if spec.locate.method != "blind":
-            log.warning(
-                "Agent %s 配了 locate.method=%s，但 M1-M4 只实现了 blind（激活即盲粘），"
-                "该项不生效——当前不会去找输入框",
-                spec.id,
-                spec.locate.method,
-            )
-        if not spec.hot_start.reuse_session:
-            log.warning(
-                "Agent %s 配了 hot_start.reuse_session=false（每次强制新会话），"
-                "但会话策略尚未实现，仍会复用当前输入框",
-                spec.id,
-            )
-        if spec.hot_start.clear_input:
-            log.warning(
-                "Agent %s 配了 hot_start.clear_input=true（发送前清空输入框），"
-                "但该功能尚未实现，输入框里原有的内容不会被清掉",
-                spec.id,
-            )
-        if spec.permissions == "elevated":
-            log.warning(
-                "Agent %s 声明 permissions=elevated，但该字段不参与决策："
-                "是否提权由运行时按进程完整性级别实测判断（v0.1 也不支持注入提权目标）",
-                spec.id,
-            )
-
-
 def load_agents(
     directory: Path | str = AGENTS_DIR,
     *,
@@ -274,7 +243,7 @@ def load_agents(
         log.error("没有可用的 Agent 配置（%s 与 config.yaml 都是空的），改用内置", directory)
         return BUILTIN_AGENTS
 
-    _warn_ineffective_options(specs, log)
+    warn_ineffective_options(specs, log)
     log.info("已加载 %d 个 Agent：%s", len(specs), "、".join(s.name for s in specs))
     return tuple(specs)
 
