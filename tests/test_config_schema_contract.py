@@ -234,6 +234,29 @@ def test_not_read_directly_entries_are_still_accurate() -> None:
     assert stale == [], f"这些字段已经接上线了，请从 NOT_READ_DIRECTLY 移除：{stale}"
 
 
+# ---------- 2b. schema 承诺的类型默认值 ----------
+
+
+def test_cli_type_defaults_to_text_only() -> None:
+    """CONFIG_SCHEMA 约束：CLI 类型 Agent 默认 `supported_payloads: ["text"]`。
+
+    这条默认值**曾经是死代码**：字段自带 default_factory(["image","text"])，
+    校验器永远看不到空值，所以 `type: cli` 配了等于没配。
+    是上面"type 没被读取"那条提示把它逼出来的——我一度把它当误报登记进例外表，
+    结果它是对的。
+    """
+    cli = AgentSpec(id="c", name="C", type="cli", process="C.exe")
+    gui = AgentSpec(id="g", name="G", type="gui", process="G.exe")
+    explicit = AgentSpec(
+        id="e", name="E", type="cli", process="E.exe", supported_payloads=["image"]
+    )
+
+    assert cli.supported_payloads == ["text"]
+    assert not cli.supports("image"), "CLI 默认不该收图片，否则会往终端里粘图"
+    assert gui.supported_payloads == ["image", "text"]
+    assert explicit.supported_payloads == ["image"], "显式写了就尊重显式"
+
+
 # ---------- 3. 尚未实现的项必须出声 ----------
 
 

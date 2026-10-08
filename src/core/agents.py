@@ -115,7 +115,11 @@ class AgentSpec(BaseModel):
     #: CONFIG_SCHEMA 的声明项。**不参与决策**：是否提权是运行时按进程完整性级别
     #: 实测判断的（见 permissions.py），配置里写什么都不会改变这个事实。
     permissions: Literal["normal", "elevated"] = "normal"
-    supported_payloads: list[PayloadKind] = Field(default_factory=lambda: ["image", "text"])
+    #: 默认留空表示"没写"，由 _apply_type_defaults 按 type 补。
+    #: **不能**在这里直接给 ["image","text"]——那样校验器永远看不到空值，
+    #: `type: cli` 的默认约束就成了死代码。本项目的配置契约检查正是这样抓到的：
+    #: 它说 `type` 没被读取，我当时把它当成误报登记进例外表，结果它是对的。
+    supported_payloads: list[PayloadKind] = Field(default_factory=list)
     icon: str | None = None
 
     @property
