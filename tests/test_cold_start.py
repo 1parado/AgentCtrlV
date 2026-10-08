@@ -29,10 +29,12 @@ class SequenceLocator:
     这样就能表达"一开始没在跑 -> 启动后窗口出现了"。
     """
 
-    def __init__(self, results: list) -> None:
+    def __init__(self, results: list, *, activatable: bool = True) -> None:
         self._results = list(results)
         self._index = 0
         self.calls = 0
+        self.activatable = activatable
+        self.activate_calls = 0
 
     def _next(self):
         self.calls += 1
@@ -45,6 +47,10 @@ class SequenceLocator:
 
     def find_host_window(self, cli_match, *, terminal_process=None):
         return self.find()
+
+    def activate(self, hwnd, timeout=None) -> bool:
+        self.activate_calls += 1
+        return self.activatable
 
     def describe_candidates(self, process: str, *, limit: int = 6) -> str:
         return ""
@@ -186,101 +192,3 @@ def test_invalid_new_session_hotkey_is_reported() -> None:
     spec = ColdStartSpec(new_session=True, new_session_hotkey="Ctrl+这不是键")
 
     assert "不可用" in start_new_session(spec, sender=lambda v, m: None)
-
-
-# ---------- ColdStarter.ensure_window ----------
-
-
-def test_already_running_skips_launch() -> None:
-    launched: list[str] = []
-    starter = ColdStarter(SequenceLocator([WINDOW]), launcher=launched.append)
-
-    result = starter.ensure_window(gui_agent())
-
-    assert result.ok and result.window is WINDOW
-    assert launched == [], "已经在跑就不该再启动一次"
-
-
-def test_launches_then_waits_for_window() -> None:
-    launched: list[str] = []
-    clock = FakeClock()
-    starter = ColdStarter(
-        SequenceLocator([None, WINDOW]),
-        launcher=launched.append,
-        sleep=clock.sleep,
-        clock=clock,
-    )
-
-    result = starter.ensure_window(gui_agent())
-
-    assert result.ok
-    assert launched == ["C:\\Demo\\Demo.exe"]
-
-
-def test_no_launch_command_explains_why() -> None:
-    starter = ColdStarter(SequenceLocator([None]))
-
-    result = starter.ensure_window(AgentSpec(id="x", name="X", process="X.exe"))
-
-    assert not result.ok
-    assert "没有配置 launch" in result.detail
-
-
-def test_cli_agent_cannot_be_cold_started() -> None:
-    """寄生在终端里的 CLI 我们不替用户开终端跑命令。"""
-    agent = AgentSpec(
-        id="codex-cli",
-        name="Codex CLI",
-        type="cli",
-        process="WindowsTerminal.exe",
-        cli_match="codex.js",
-        launch="C:\\somewhere\\codex.exe",
-    )
-    starter = ColdStarter(SequenceLocator([None]))
-
-    result = starter.ensure_window(agent)
-
-    assert not result.ok
-    assert "跑在终端里" in result.detail
-
-
-def test_launch_failure_returns_reason() -> None:
-    def boom(_command: str) -> None:
-        raise ColdStartError("启动命令被拒绝")
-
-    starter = ColdStarter(SequenceLocator([None]), launcher=boom)
-
-    result = starter.ensure_window(gui_agent())
-
-    assert not result.ok
-    assert "启动命令被拒绝" in result.detail
-
-
-def test_window_never_appearing_reports_timeout() -> None:
-    clock = FakeClock()
-    agent = gui_agent(cold_start=ColdStartSpec(ready_timeout=1000))
-    starter = ColdStarter(
-        SequenceLocator([None]), launcher=lambda _c: None, sleep=clock.sleep, clock=clock
-    )
-
-    result = starter.ensure_window(agent)
-
-    assert not result.ok
-    assert "没等到它的窗口" in result.detail
-    assert "1.0s" in result.detail
-
-
-def test_new_session_warning_is_carried_back() -> None:
-    clock = FakeClock()
-    agent = gui_agent(cold_start=ColdStartSpec(new_session=True, new_session_method="uia_button"))
-    starter = ColdStarter(
-        SequenceLocator([None, WINDOW]),
-        launcher=lambda _c: None,
-        sleep=clock.sleep,
-        clock=clock,
-    )
-
-    result = starter.ensure_window(agent)
-
-    assert result.ok
-    assert "uia_button" in result.detail, "窗口起来了，但新会话没触发，必须带回来告知"

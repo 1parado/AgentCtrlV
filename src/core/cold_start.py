@@ -29,6 +29,8 @@ from src.utils.sendinput import send_hotkey
 
 #: 等窗口出现时的轮询间隔；太密是白烧 CPU，太疏是白等
 POLL_INTERVAL_S = 0.25
+#: 窗口已经出现、也确认到了前台之后，再给它一点时间真正开始处理输入
+UI_SETTLE_S = 0.3
 #: 发完新会话快捷键后留一点时间让界面开始切换
 NEW_SESSION_SETTLE_S = 0.4
 
@@ -43,6 +45,9 @@ _MOD_TO_VK = (
 
 class ColdStartError(RuntimeError):
     """连启动请求都没能发出去。"""
+
+
+_LOGGER = get_logger(__name__)
 
 
 def modifiers_to_vks(modifiers: int) -> list[int]:
@@ -109,6 +114,37 @@ def wait_for_window(
             return window
         if clock() >= deadline:
             return None
+        sleep(POLL_INTERVAL_S)
+
+
+def wait_for_ui_ready(
+    locator: WindowLocator,
+    hwnd: int,
+    timeout_s: float,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+    clock: Callable[[], float] = time.monotonic,
+) -> bool:
+    """等窗口真正可以接收输入。
+
+    **窗口出现 != 应用能收输入。** 实测：冷启动的探针窗口已经出现、也确实到了
+    前台，但紧接着发出的 Ctrl+V 完全没有被处理——应用还在初始化自己的界面。
+
+    这就是 CONFIG_SCHEMA 里 `cold_start.ui_ready_timeout` 存在的原因
+    （此前它被建模、却从未被使用）。Windows 没有通用的"应用已就绪"信号，
+    所以这里用"能把它稳定切到前台 + 再给一小段安静时间"作为近似，
+    并且受 `ui_ready_timeout` 上限约束——不会无限等下去。
+    """
+    deadline = clock() + max(0.0, timeout_s)
+    while True:
+        try:
+            if locator.activate(hwnd, timeout=0.5):
+                sleep(UI_SETTLE_S)
+                return True
+        except Exception as exc:  # noqa: BLE001 - 读不到前台不算致命，继续等
+            _LOGGER.debug("等待 UI 就绪时激活失败：%s", exc)
+        if clock() >= deadline:
+            return False
         sleep(POLL_INTERVAL_S)
 
 
@@ -186,9 +222,22 @@ class ColdStarter:
             )
 
         self._log.info("%s 窗口已出现：hwnd=%s", agent.name, window.hwnd)
+
+        # 窗口出现 != 能收输入。等它真正到前台并安静下来，再交给注入器。
+        ui_timeout_s = agent.cold_start.ui_ready_timeout / 1000.0
+        note = ""
+        if not wait_for_ui_ready(
+            self._locator, window.hwnd, ui_timeout_s, sleep=self._sleep, clock=self._clock
+        ):
+            note = (
+                f"{agent.name} 的窗口已出现，但 {ui_timeout_s:.1f}s 内没能把它切到前台"
+                "——可能被其他窗口挡住，注入很可能失败"
+            )
+            self._log.warning("%s", note)
+
         warning = start_new_session(agent.cold_start, sender=self._sender)
         if warning:
             self._log.warning("%s", warning)
         else:
             self._sleep(NEW_SESSION_SETTLE_S)
-        return ColdStartResult(window, warning)
+        return ColdStartResult(window, warning or note)
