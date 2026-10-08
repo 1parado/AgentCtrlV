@@ -114,7 +114,16 @@ def image_to_dib(image: Image.Image) -> bytes:
 
 
 def image_to_png_bytes(image: Image.Image) -> bytes:
-    """编码为 PNG 字节流，用于注册格式 "PNG"（Chromium/Electron 系优先读它）。"""
+    """编码为 PNG 字节流，用于注册格式 "PNG"（Chromium/Electron 系优先读它）。
+
+    **刻意用 compress_level=1**：这个 PNG 只活在剪贴板里、几秒后就被恢复掉，
+    体积毫无意义（实测 level 6 -> 1 只有 11KB -> 33KB，4K 下 39KB -> 121KB），
+    但编码时间差得很明显——4K 从 188ms 降到 128ms。它落在**热启动**路径上
+    （用户确认之后才写剪贴板），所以省下来的是用户实打实等的时间。
+
+    不用 level=0：实测并不更快（4K 139ms），体积却暴涨到 24MB。
+    PNG 在任何压缩级别下都是无损的，所以这里没有画质代价。
+    """
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    image.save(buffer, format="PNG", compress_level=1)
     return buffer.getvalue()

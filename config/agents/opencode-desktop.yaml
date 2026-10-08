@@ -8,9 +8,7 @@ window:
   title_pattern: "OpenCode*"
   multi_instance: "recent"
 locate:
-  method: "uia"
-  uia_control: "EditControl"
-  uia_timeout: 1000
+  method: "blind"   # uia/click 尚未实现；写了会被警告且不生效
 inject:
   method: "clipboard"
   paste_delay: 300

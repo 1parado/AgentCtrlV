@@ -9,11 +9,7 @@ window:
   title_pattern: "ChatGPT*"
   multi_instance: "recent"
 locate:
-  method: "uia"
-  uia_control: "DocumentControl"
-  uia_search_depth: 10
-  uia_timeout: 1000
-  click_coords: [960, 800]
+  method: "blind"   # uia/click 尚未实现；写了会被警告且不生效
 inject:
   method: "clipboard"
   paste_delay: 300

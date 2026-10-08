@@ -163,3 +163,67 @@ def test_non_positive_delay_is_clamped_by_injector_not_config(tmp_path, bad: int
     )
 
     assert load_agents(tmp_path)[0].paste_delay_ms == bad
+
+
+def _one_agent(tmp_path, extra_yaml: str, log=None):
+    path = tmp_path / "demo.yaml"
+    path.write_text(f'id: demo\nname: "D"\nprocess: "D.exe"\n{extra_yaml}', encoding="utf-8")
+    return load_agents(tmp_path, logger=log)
+
+
+def test_locate_uia_is_warned(tmp_path) -> None:
+    """locate 段以前连模型都没有、被静默丢弃。"""
+    log = RecordingLogger()
+
+    _one_agent(tmp_path, 'locate:\n  method: "uia"\n', log)
+
+    assert any("locate.method" in text for text in log.at("warning"))
+
+
+def test_hot_start_forced_new_session_is_warned(tmp_path) -> None:
+    """会话策略尚未实现；配了就必须说，否则用户以为每次都会开新会话。"""
+    log = RecordingLogger()
+
+    _one_agent(tmp_path, "hot_start:\n  reuse_session: false\n", log)
+
+    assert any("reuse_session" in text for text in log.at("warning"))
+
+
+def test_hot_start_clear_input_is_warned(tmp_path) -> None:
+    log = RecordingLogger()
+
+    _one_agent(tmp_path, "hot_start:\n  clear_input: true\n", log)
+
+    assert any("clear_input" in text for text in log.at("warning"))
+
+
+def test_permissions_elevated_is_warned(tmp_path) -> None:
+    """该字段不参与决策——是否提权是运行时实测的。"""
+    log = RecordingLogger()
+
+    _one_agent(tmp_path, 'permissions: "elevated"\n', log)
+
+    assert any("permissions" in text for text in log.at("warning"))
+
+
+def test_default_options_produce_no_warnings(tmp_path) -> None:
+    """默认值不该吵人：只有"配了但不生效"才警告。"""
+    log = RecordingLogger()
+
+    _one_agent(tmp_path, "", log)
+
+    assert log.at("warning") == []
+
+
+def test_shipped_agent_configs_produce_no_warnings() -> None:
+    """随仓库下发的配置必须描述**实际行为**，不能声明没实现的东西。
+
+    这是一条回归：早先我给 6 个 Agent 都写了 locate.method: uia，
+    结果每次启动都刷 6 条"该项不生效"的警告。
+    """
+    log = RecordingLogger()
+
+    load_agents(REPO / "config" / "agents", logger=log)
+
+    assert [text for text in log.at("warning")] == []
+

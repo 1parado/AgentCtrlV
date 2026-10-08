@@ -75,6 +75,21 @@ class ColdStartSpec(BaseModel):
     ui_ready_timeout: int = 3000
 
 
+class HotStartSpec(BaseModel):
+    """Agent 已经在跑时的会话策略（CONFIG_SCHEMA 的 `hot_start` 段）。
+
+    M1–M5 都还没实现会话策略：热启动就是"复用当前的输入框"。
+    `reuse_session: false`（每次强制新会话）与 `clear_input: true`（先清空输入框）
+    都尚未实现——但**不能静默忽略**，见 _warn_ineffective_options。
+    PRD 的说法是"冷启动可强制新会话 / 热启动复用当前"，这两项属于后续里程碑。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    reuse_session: bool = True
+    clear_input: bool = False
+
+
 class AgentSpec(BaseModel):
     """一个注入目标。字段名与 CONFIG_SCHEMA.md 的 Agent 段一致。"""
 
@@ -95,6 +110,10 @@ class AgentSpec(BaseModel):
     locate: LocateSpec = Field(default_factory=LocateSpec)
     inject: InjectSpec = Field(default_factory=InjectSpec)
     cold_start: ColdStartSpec = Field(default_factory=ColdStartSpec)
+    hot_start: HotStartSpec = Field(default_factory=HotStartSpec)
+    #: CONFIG_SCHEMA 的声明项。**不参与决策**：是否提权是运行时按进程完整性级别
+    #: 实测判断的（见 permissions.py），配置里写什么都不会改变这个事实。
+    permissions: Literal["normal", "elevated"] = "normal"
     supported_payloads: list[PayloadKind] = Field(default_factory=lambda: ["image", "text"])
     icon: str | None = None
 
@@ -199,6 +218,24 @@ def _warn_ineffective_options(specs: list[AgentSpec], log) -> None:
                 "该项不生效——当前不会去找输入框",
                 spec.id,
                 spec.locate.method,
+            )
+        if not spec.hot_start.reuse_session:
+            log.warning(
+                "Agent %s 配了 hot_start.reuse_session=false（每次强制新会话），"
+                "但会话策略尚未实现，仍会复用当前输入框",
+                spec.id,
+            )
+        if spec.hot_start.clear_input:
+            log.warning(
+                "Agent %s 配了 hot_start.clear_input=true（发送前清空输入框），"
+                "但该功能尚未实现，输入框里原有的内容不会被清掉",
+                spec.id,
+            )
+        if spec.permissions == "elevated":
+            log.warning(
+                "Agent %s 声明 permissions=elevated，但该字段不参与决策："
+                "是否提权由运行时按进程完整性级别实测判断（v0.1 也不支持注入提权目标）",
+                spec.id,
             )
 
 

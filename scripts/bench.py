@@ -96,6 +96,26 @@ def bench_payload() -> list[tuple[str, float, float]]:
     return rows
 
 
+def bench_write() -> list[tuple[str, float, float]]:
+    """热启动路径上的写入成本：确认之后要把载荷重新编码回剪贴板。
+
+    这段发生在"用户已经点完"之后，占的是热启动 <800ms 的预算，
+    和菜单那条预算不是同一笔账。
+    """
+    manager = ClipboardManager()
+    original = manager.capture()
+    rows: list[tuple[str, float, float]] = []
+    try:
+        text = "热启动载荷" * 40
+        rows.append(("文本 200 字", *timeit(lambda: manager.write_text(text))))
+        for label, size in (("图片 1920x1080", (1920, 1080)), ("图片 3840x2160", (3840, 2160))):
+            image = make_image(*size)
+            rows.append((label, *timeit(lambda img=image: manager.write_image(img))))
+    finally:
+        manager.restore(original)
+    return rows
+
+
 def bench_menu(agents) -> list[tuple[str, float, float]]:
     app = QApplication.instance() or QApplication([])
     items = [AgentItem(a.id, a.name, a.icon, a.enabled) for a in agents]
@@ -236,6 +256,7 @@ def main() -> int:
           f"（offscreen 下测不到真实窗口激活开销，那部分属于 --live）")
 
     report(bench_payload(), budget_ms=None, title="剪贴板读取 + 解码（菜单前，占用同一预算）")
+    report(bench_write(), budget_ms=None, title="写入剪贴板（确认后，占用热启动预算）")
     report(bench_menu(agents), budget_ms=MENU_BUDGET_MS, title="菜单路径")
 
     if args.live:
