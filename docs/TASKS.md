@@ -199,11 +199,79 @@ python scripts/m3_demo.py --runs 5
 
 ## M4：配置化
 
+> **状态：代码已完成，自动化验收通过。**
+>
+> | 项 | 结果 |
+> |----|------|
+> | T4.1 完整 YAML + pydantic Schema | ✅ `app:` 段（hotkeys / triggers / behavior）已实现并**接上线**；Agent 段用 pydantic 强校验 |
+> | T4.2 内置 Agent 全部走配置 | ✅ 代码里不再有硬编码 Agent，只剩一份"配置目录也没有"时的兜底 |
+> | T4.3 用户可添加自定义 Agent | ✅ 两种方式：`config/agents/*.yaml` 一个文件一个 Agent，或在 `config.yaml` 的 `agents:` 列表里写 |
+> | 单元测试 | ✅ 297 passed（本轮新增 30 条：配置默认值/坏配置/内联 Agent/装配接线） |
+> | **M4 总验收** | ✅ 改 YAML 即可增删 Agent、改热键、改多目标间隔与上限，**无需改代码** |
+>
+> 验收命令：`python src/main.py --check`（会打印配置来源、生效的热键与行为、以及所有配置问题）
+
+### 配置的两条来源
+
+```yaml
+# config/config.yaml —— app 段永远是这里；agents 列表可选
+app:
+  hotkeys:
+    dispatch_clipboard: "Alt+V"
+    resend_last: "Alt+Shift+V"
+  behavior:
+    multi_target_delay: 800    # T3.1 的目标间隔
+    multi_target_max: 5        # PRD 的多选上限
+agents: []                     # 也可以把 Agent 直接写在这里
+```
+
+```yaml
+# config/agents/*.yaml —— 一个文件一个 Agent
+id: my-agent
+name: "我的 Agent"
+process: "Mine.exe"
+launch: 'C:\Mine\Mine.exe'
+```
+
+两条来源会**合并**；出现同一个 `id` 时保留 `config/agents/` 里的那份并记 error
+（不静默取舍）。`config/config.example.yaml` 是随仓库下发的完整样例，
+有测试保证它**能直接跑通且不产生任何问题提示**。
+
+### 配置错了会怎样（设计取舍）
+
+原则是「**不让一个手写错字把程序拦在门外，但也绝不假装没看见**」：
+
+| 情况 | 行为 |
+|------|------|
+| 文件不存在 | 全部默认值 + 一条 info 说明（告诉我们"你正在用默认配置"） |
+| YAML 语法错 / 顶层不是映射 | 全部默认值 + error + `--check` 里列出 |
+| 某个字段类型错 | 该段退回默认 + error |
+| 某个 Agent 坏掉 | 只跳过它，其余照常；**app 段不受影响** |
+| 热键非法 / 是系统保留组合 | 报告出来；其余热键照常注册 |
+| `behavior.auto_enter: true` | v0.1 禁止自动回车，强制按 false，并 error 说明 |
+| `inject.auto_enter: true`（Agent 级） | 同样不生效，warning 说明 |
+| `inject.method` 非 clipboard | M1–M4 只实现了 clipboard，warning 说明 |
+| `triggers.*` 打开 | 解析了但监听**尚未实现**，warning 说明（避免以为已经在监听） |
+| `hotkeys.dispatch_screenshot` | 截图分发未实现，**不注册该热键**——注册了却什么都不做等于全局吞掉用户的 Alt+S |
+
 ### T4.1 完整 YAML + pydantic Schema
-### T4.2 3 个内置 Agent 全部走配置
+- 实现：`src/core/config.py`（`AppConfig` / `HotkeyConfig` / `TriggerConfig` / `BehaviorConfig` / `load_config`）
+- 接线：`src/main.py`（热键与行为）、`src/core/controller.py`（间隔、恢复剪贴板）、
+  `src/ui/radial_menu.py`（多选上限）
+- 校验复用 `parse_hotkey`，保留组合（Ctrl+Alt+Del、Win+L…）在这一层就被挡下
+
+### T4.2 内置 Agent 全部走配置
+- `src/core/agents.py` 里只剩 `BUILTIN_AGENTS` 这一个"连配置目录都没有"时的兜底
+- 注意：`inject.auto_enter` / `inject.method` 这类"配置里能写但 v0.1 不生效"的项，
+  现在会**出声**（见上表），不会再被安静地忽略
+
 ### T4.3 用户可添加自定义 Agent（基础）
+- 放下一个 `config/agents/我的.yaml` 即出现在菜单里；
+  超过菜单上限（12）时按 `enabled: false` 取舍
+- 菜单容量与多选上限见 T2.2 / T3.1
 
 **M4 总验收**：修改 YAML 即可新增/调整 Agent，无需改代码
+- 命令：`python src/main.py --check`
 
 ---
 

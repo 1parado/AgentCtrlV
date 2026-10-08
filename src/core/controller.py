@@ -64,6 +64,7 @@ class Controller:
         cold_starter: ColdStarter | None = None,
         interval_s: float = MULTI_TARGET_INTERVAL_S,
         menu_settle_s: float = MENU_CLOSE_SETTLE_S,
+        restore_clipboard: bool = True,
         sleep: Callable[[float], None] = time.sleep,
         logger=None,
     ) -> None:
@@ -77,6 +78,7 @@ class Controller:
         self._cold_starter = cold_starter or ColdStarter(locator)
         self._interval_s = interval_s
         self._menu_settle_s = menu_settle_s
+        self._restore_clipboard = restore_clipboard
         self._sleep = sleep
         self._last_payload: Payload | None = None
         self._log = logger or get_logger(__name__)
@@ -160,6 +162,7 @@ class Controller:
             self._locator,
             paste_delay_ms=agent.paste_delay_ms,
             render_delay_ms=agent.render_delay_ms,
+            restore_clipboard=self._restore_clipboard,
         )
 
     def _inject(self, agent_id: str, payload: Payload) -> InjectionOutcome:

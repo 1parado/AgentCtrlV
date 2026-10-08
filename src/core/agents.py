@@ -126,18 +126,11 @@ BUILTIN_AGENTS: tuple[AgentSpec, ...] = (
 )
 
 
-def load_agents(directory: Path | str = AGENTS_DIR, *, logger=None) -> tuple[AgentSpec, ...]:
-    """加载 `config/agents/*.yaml`。
-
-    - 目录不存在或没有任何可用条目 → 退回内置，并明确告知（不静默）
-    - 单个文件非法 → 记 error 并跳过该文件，其余照常加载
-    - `enabled: false` → 跳过（用户用它控制菜单里出现哪些）
-    """
-    log = logger or get_logger(__name__)
-    base = Path(directory)
+def _load_directory(base: Path, log) -> list[AgentSpec]:
+    """读 config/agents/*.yaml。坏掉一个文件不带走其余。"""
     if not base.is_dir():
-        log.warning("Agent 配置目录 %s 不存在，改用内置 %d 个 Agent", base, len(BUILTIN_AGENTS))
-        return BUILTIN_AGENTS
+        log.warning("Agent 配置目录 %s 不存在", base)
+        return []
 
     specs: list[AgentSpec] = []
     seen: dict[str, Path] = {}
@@ -163,11 +156,64 @@ def load_agents(directory: Path | str = AGENTS_DIR, *, logger=None) -> tuple[Age
             log.debug("Agent %s 已禁用（enabled: false），不进菜单", spec.id)
             continue
         specs.append(spec)
+    return specs
+
+
+def _warn_ineffective_options(specs: list[AgentSpec], log) -> None:
+    """把"配置里写了、但 v0.1 不会生效"的项大声说出来。
+
+    沉默地忽略配置是最糟的一种失败：用户以为配了、实际没有。
+    """
+    for spec in specs:
+        if spec.inject.auto_enter:
+            log.warning(
+                "Agent %s 配了 inject.auto_enter=true，但 v0.1 禁止自动回车，该项不生效",
+                spec.id,
+            )
+        if spec.inject.method != "clipboard":
+            log.warning(
+                "Agent %s 配了 inject.method=%s，但 M1-M4 只实现了 clipboard 注入，该项不生效",
+                spec.id,
+                spec.inject.method,
+            )
+
+
+def load_agents(
+    directory: Path | str = AGENTS_DIR,
+    *,
+    extra: tuple[AgentSpec, ...] = (),
+    logger=None,
+) -> tuple[AgentSpec, ...]:
+    """汇总所有 Agent：`config/agents/*.yaml` + `config.yaml` 里的内联 `agents:`。
+
+    - 目录不存在或没有任何可用条目 → 退回内置，并明确告知（不静默）
+    - 单个文件非法 → 记 error 并跳过该文件，其余照常加载
+    - `enabled: false` → 跳过（用户用它控制菜单里出现哪些）
+    - 两种来源出现同一个 id → 保留 config/agents/ 里的定义并记 error
+    """
+    log = logger or get_logger(__name__)
+    specs = _load_directory(Path(directory), log)
+
+    seen = {spec.id for spec in specs}
+    for spec in extra:
+        if spec.id in seen:
+            log.error(
+                "Agent id 重复：%s（来自 config.yaml 的 agents 列表）已被 "
+                "config/agents/ 里的定义占用，已跳过",
+                spec.id,
+            )
+            continue
+        if not spec.enabled:
+            log.debug("内联 Agent %s 已禁用，不进菜单", spec.id)
+            continue
+        seen.add(spec.id)
+        specs.append(spec)
 
     if not specs:
-        log.error("%s 里没有可用的 Agent 配置，改用内置", base)
+        log.error("没有可用的 Agent 配置（%s 与 config.yaml 都是空的），改用内置", directory)
         return BUILTIN_AGENTS
 
+    _warn_ineffective_options(specs, log)
     log.info("已加载 %d 个 Agent：%s", len(specs), "、".join(s.name for s in specs))
     return tuple(specs)
 

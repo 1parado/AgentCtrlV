@@ -64,7 +64,27 @@ Agent 列表来自 [config/agents/](config/agents/) 下的 YAML（契约见
 
 ```bash
 python scripts/list_windows.py   # 看现状：有哪些窗口、每个 Agent 能不能定位到
+cp config/config.example.yaml config/config.yaml   # 自定义热键与行为
+python src/main.py --check       # 打印配置来源、生效项与所有配置问题
 ```
+
+`config/config.yaml` 管"应用怎么跑"，`config/agents/*.yaml` 管"粘到哪去"：
+
+```yaml
+# config/config.yaml
+app:
+  hotkeys:
+    dispatch_clipboard: "Alt+V"   # 分发剪贴板
+    resend_last: "Alt+Shift+V"    # 重发上一次
+  behavior:
+    multi_target_delay: 800       # 多选时目标间隔（ms）
+    multi_target_max: 5           # 多选上限
+    restore_clipboard: true       # 发送后恢复原剪贴板
+```
+
+配置写错了不会把程序拦在门外，但**一定会说出来**：坏字段退回默认并记 error，
+坏掉的 Agent 只跳过它自己，`v0.1` 不支持的项（如全局自动回车）强制关闭并告知。
+`--check` 会把这些问题一次列全。
 
 支持两类目标：
 

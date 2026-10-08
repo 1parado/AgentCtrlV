@@ -50,7 +50,13 @@ class RadialMenu(QDialog):
     confirmed = Signal(list)
     cancelled = Signal()
 
-    def __init__(self, agents: list[AgentItem], parent=None) -> None:
+    def __init__(
+        self,
+        agents: list[AgentItem],
+        parent=None,
+        *,
+        max_selection: int = MAX_SELECTION,
+    ) -> None:
         super().__init__(parent)
         if not agents:
             raise ValueError("环形菜单至少需要一个 Agent")
@@ -59,6 +65,7 @@ class RadialMenu(QDialog):
                 f"环形菜单最多支持 {MAX_MENU_ITEMS} 个 Agent（当前 {len(agents)} 个）；"
                 "请在 config/agents/*.yaml 里用 enabled: false 关掉暂时不用的"
             )
+        self._max_selection = max(1, max_selection)
         self._agents = list(agents)
         self._selected: set[str] = set()
         self._hovered: int | None = None
@@ -178,9 +185,9 @@ class RadialMenu(QDialog):
         if agent_id in self._selected:
             self._selected.discard(agent_id)
             self._hint = ""
-        elif len(self._selected) >= MAX_SELECTION:
+        elif len(self._selected) >= self._max_selection:
             # 不静默丢弃用户的操作，明确告诉他到上限了
-            self._hint = f"最多选 {MAX_SELECTION} 个"
+            self._hint = f"最多选 {self._max_selection} 个"
         else:
             self._selected.add(agent_id)
             self._hint = ""
