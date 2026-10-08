@@ -25,6 +25,7 @@ class Tray(QObject):
 
     dispatch_requested = Signal()
     resend_requested = Signal()
+    hotkeys_requested = Signal()
     quit_requested = Signal()
 
     def __init__(self, app_name: str = "AgentCtrlV", icon_path: str = DEFAULT_ICON, logger=None) -> None:
@@ -39,11 +40,15 @@ class Tray(QObject):
         self._dispatch_action.triggered.connect(self.dispatch_requested.emit)
         self._resend_action = QAction("重发上一次 (Alt+Shift+V)", self)
         self._resend_action.triggered.connect(self.resend_requested.emit)
+        hotkeys_action = QAction("设置热键…", self)
+        hotkeys_action.triggered.connect(self.hotkeys_requested.emit)
         quit_action = QAction("退出", self)
         quit_action.triggered.connect(self.quit_requested.emit)
 
         menu.addAction(self._dispatch_action)
         menu.addAction(self._resend_action)
+        menu.addSeparator()
+        menu.addAction(hotkeys_action)
         menu.addSeparator()
         menu.addAction(quit_action)
         self._tray.setContextMenu(menu)

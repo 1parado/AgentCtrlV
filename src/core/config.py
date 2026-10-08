@@ -12,6 +12,7 @@ Agent 的定义住在 `config/agents/*.yaml`；这里只管"应用怎么跑"：
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,62 @@ class Config:
     #: 加载过程中发现的问题，供 --check 直接展示（不静默）
     problems: tuple[str, ...] = ()
     source: Path | None = None
+
+
+def save_hotkeys(
+    hotkeys: HotkeyConfig,
+    path: Path | str = DEFAULT_CONFIG_PATH,
+    *,
+    logger=None,
+) -> tuple[bool, str]:
+    """把热键写回 config.yaml。返回 (是否写入, 说明)。
+
+    **刻意做得很保守**：只对已存在的 `app.hotkeys:` 块做逐行替换，
+    不重新序列化整个文件——那样会把用户的注释和排版全部抹掉。
+
+    找不到锚点时**拒绝写入**并说明原因，而不是硬塞一个 `app:` 块进去：
+    文件里已经有一个 `app:` 时再追加一个会造成重复键，把配置写坏。
+    热键仍然会在本次运行内生效（调用方照常 replace），只是没能落盘。
+    """
+    log = logger or get_logger(__name__)
+    target = Path(path)
+    if not target.is_file():
+        return False, f"{target} 不存在（本次热键已生效，重启后会回到默认值）"
+
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError as exc:
+        log.error("读取 %s 失败：%s", target, exc)
+        return False, f"读取 {target} 失败：{exc}"
+
+    if not re.search(r"^\s*hotkeys:\s*$", text, re.M):
+        return False, f"{target} 里没有 app.hotkeys 段，未改动文件（请手动添加后重试）"
+
+    updated, changes = text, 0
+    for key, value in (
+        ("dispatch_clipboard", hotkeys.dispatch_clipboard),
+        ("resend_last", hotkeys.resend_last),
+    ):
+        pattern = re.compile(rf"^(\s*{key}:\s*).*$", re.M)
+        if not pattern.search(updated):
+            continue
+        # 用 lambda 替换：re.sub 会把替换串里的反斜杠当转义
+        updated = pattern.sub(lambda m, v=value: m.group(1) + f'"{v}"', updated)
+        changes += 1
+
+    if changes == 0:
+        return False, f"{target} 的 hotkeys 段里没有可替换的键，未改动文件"
+    if updated == text:
+        return True, f"{target} 无需改动（值相同）"
+
+    try:
+        target.write_text(updated, encoding="utf-8")
+    except OSError as exc:
+        log.error("写入 %s 失败：%s", target, exc)
+        return False, f"写入 {target} 失败：{exc}"
+
+    log.info("已把热键写回 %s（%d 处）", target, changes)
+    return True, f"已写入 {target}"
 
 
 def _read_yaml(path: Path, log) -> dict[str, Any] | None:

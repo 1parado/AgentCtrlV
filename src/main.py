@@ -23,14 +23,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
+from PySide6.QtWidgets import QApplication, QDialog, QWidget  # noqa: E402
 
 from src.core.agents import load_agents  # noqa: E402
 from src.core.clipboard import ClipboardManager  # noqa: E402
-from src.core.config import Config, load_config  # noqa: E402
+from src.core.config import DEFAULT_CONFIG_PATH, Config, load_config, save_hotkeys  # noqa: E402
 from src.core.controller import Controller  # noqa: E402
 from src.core.hotkey import HotkeyConflictError, HotkeyError, HotkeyManager  # noqa: E402
 from src.core.window import WindowLocator  # noqa: E402
+from src.ui.hotkey_dialog import HotkeyDialog  # noqa: E402
 from src.ui.qt_hotkey import HotkeyEventFilter  # noqa: E402
 from src.ui.radial_menu import AgentItem, RadialMenu  # noqa: E402
 from src.ui.tray import Tray  # noqa: E402
@@ -75,6 +76,7 @@ class Application:
         self.menu.cancelled.connect(self.controller.on_cancelled)
         self.tray.dispatch_requested.connect(self.controller.dispatch)
         self.tray.resend_requested.connect(self.controller.resend)
+        self.tray.hotkeys_requested.connect(self.open_hotkey_dialog)
         self.tray.quit_requested.connect(self.shutdown)
 
         self._dispatch_id: int | None = None
@@ -123,6 +125,65 @@ class Application:
         else:
             self._log.debug("收到未知热键 id=%s", event.hotkey_id)
 
+    # ---------- 热键自定义（M5）----------
+
+    def open_hotkey_dialog(self) -> None:
+        """托盘菜单「设置热键…」的落点。"""
+        current = self.config.app.hotkeys
+        dialog = HotkeyDialog(current.dispatch_clipboard, current.resend_last)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            dispatch, resend = dialog.values()
+            if dispatch == current.dispatch_clipboard and resend == current.resend_last:
+                return
+            self.apply_hotkeys(dispatch, resend)
+
+    def apply_hotkeys(self, dispatch: str, resend: str) -> bool:
+        """改键：**先全部注册成功，再注销旧的**，任一步失败就整体回滚。
+
+        不做成"逐个换"是因为换到一半失败会留下一个既不是旧配置、也不是新配置
+        的热键状态——那种状态用户根本没法理解。
+        """
+        current = self.config.app.hotkeys
+        old_dispatch = self._dispatch_id
+        old_resend = self._resend_id
+        registered: list[int] = []
+
+        def bind(text: str, unchanged: bool, existing: int | None) -> int:
+            # 值没变就不要重新注册：RegisterHotKey 会和自己已注册的组合撞车
+            if unchanged and existing is not None:
+                return existing
+            new_id = self.hotkeys.register(text)
+            registered.append(new_id)
+            return new_id
+
+        try:
+            new_dispatch = bind(dispatch, dispatch == current.dispatch_clipboard, old_dispatch)
+            new_resend = bind(resend, resend == current.resend_last, old_resend)
+        except (HotkeyConflictError, HotkeyError) as exc:
+            for hotkey_id in registered:
+                self.hotkeys.unregister(hotkey_id)
+            self._log.error("改键失败，已回滚：%s", exc)
+            self.tray.notify("热键未更改", f"注册失败：{exc}（已保持原热键）", warning=True)
+            return False
+
+        for hotkey_id in (old_dispatch, old_resend):
+            if hotkey_id is not None and hotkey_id not in (new_dispatch, new_resend):
+                self.hotkeys.unregister(hotkey_id)
+        self._dispatch_id, self._resend_id = new_dispatch, new_resend
+
+        current.dispatch_clipboard = dispatch
+        current.resend_last = resend
+        self.tray.set_hotkey_hint(dispatch, resend)
+
+        saved, detail = save_hotkeys(current, self.config.source or DEFAULT_CONFIG_PATH)
+        self._log.info("热键已更新为 %s / %s（落盘=%s）", dispatch, resend, saved)
+        self.tray.notify(
+            "热键已更新",
+            f"分发 {dispatch} / 重发 {resend}\n{detail}",
+            warning=not saved,
+        )
+        return True
+
     # ---------- 生命周期 ----------
 
     def start(self) -> None:
@@ -148,7 +209,7 @@ def _print_check(application: "Application") -> None:
     behavior = config.app.behavior
     hotkeys = config.app.hotkeys
 
-    print("AgentCtrlV 装配自检（M4 配置化）")
+    print("AgentCtrlV 装配自检（配置化 + 打磨）")
     print(f"  配置文件        : {config.source or '未找到，全部使用默认值'}")
 
     if config.problems:

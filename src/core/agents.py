@@ -32,6 +32,22 @@ class WindowSpec(BaseModel):
     multi_instance: str = "recent"
 
 
+class LocateSpec(BaseModel):
+    """怎么把焦点放进输入框（CONFIG_SCHEMA 的 `locate` 段）。
+
+    M1–M4 只实现了 `blind`：激活窗口即认为焦点就位，直接盲粘。
+    `uia` / `click` 尚未实现——但**不能静默忽略**，见 _warn_ineffective_options。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    method: Literal["uia", "click", "blind"] = "blind"
+    uia_control: str | None = None
+    uia_search_depth: int = 10
+    uia_timeout: int = 1000
+    click_coords: list[int] | None = None
+
+
 class InjectSpec(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -76,6 +92,7 @@ class AgentSpec(BaseModel):
     cli_match: str | None = None
     launch: str = ""
     window: WindowSpec = Field(default_factory=WindowSpec)
+    locate: LocateSpec = Field(default_factory=LocateSpec)
     inject: InjectSpec = Field(default_factory=InjectSpec)
     cold_start: ColdStartSpec = Field(default_factory=ColdStartSpec)
     supported_payloads: list[PayloadKind] = Field(default_factory=lambda: ["image", "text"])
@@ -175,6 +192,13 @@ def _warn_ineffective_options(specs: list[AgentSpec], log) -> None:
                 "Agent %s 配了 inject.method=%s，但 M1-M4 只实现了 clipboard 注入，该项不生效",
                 spec.id,
                 spec.inject.method,
+            )
+        if spec.locate.method != "blind":
+            log.warning(
+                "Agent %s 配了 locate.method=%s，但 M1-M4 只实现了 blind（激活即盲粘），"
+                "该项不生效——当前不会去找输入框",
+                spec.id,
+                spec.locate.method,
             )
 
 

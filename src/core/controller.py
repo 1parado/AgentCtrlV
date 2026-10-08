@@ -184,7 +184,11 @@ class Controller:
             # T3.2：没在跑就按配置冷启动，真的起来了再注入
             result = self._cold_starter.ensure_window(agent)
             if result.window is None:
-                return InjectionOutcome(InjectionStatus.FAILED, result.detail)
+                # 兜底：失败必须带一句话。空原因的失败通知等于没通知。
+                detail = result.detail or (
+                    f"{agent.name} 没有可用的窗口，且冷启动未成功"
+                )
+                return InjectionOutcome(InjectionStatus.FAILED, detail)
             window = result.window
             warning = result.detail
 
