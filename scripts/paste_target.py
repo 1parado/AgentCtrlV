@@ -32,7 +32,7 @@ from pathlib import Path
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication, QTextEdit
 
-TITLE = "AgentCtrlV-Probe-Target"
+DEFAULT_TITLE = "AgentCtrlV-Probe-Target"
 SELF_DESTRUCT_MS = 30_000
 HEARTBEAT_MS = 150
 
@@ -40,13 +40,14 @@ HEARTBEAT_MS = 150
 class ProbeTarget(QTextEdit):
     """记录粘贴过程每一步的 QTextEdit。"""
 
-    def __init__(self, state_path: Path) -> None:
+    def __init__(self, state_path: Path, title: str = DEFAULT_TITLE) -> None:
         super().__init__()
         self._state_path = state_path
         self._keys: list[str] = []
         self._paste_calls = 0
         self._last_mime: dict | None = None
-        self.setWindowTitle(TITLE)
+        # 标题可覆盖：多选验证需要同时开好几个互不混淆的目标窗口
+        self.setWindowTitle(title)
         self.resize(640, 420)
 
     # --- 事件钩子 ---
@@ -91,12 +92,13 @@ class ProbeTarget(QTextEdit):
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
-        print("usage: target_app.py <state.json>", file=sys.stderr)
+        print("usage: paste_target.py <state.json> [window_title]", file=sys.stderr)
         return 2
 
     state_path = Path(argv[1])
+    title = argv[2] if len(argv) > 2 else DEFAULT_TITLE
     app = QApplication([argv[0]])
-    window = ProbeTarget(state_path)
+    window = ProbeTarget(state_path, title)
     window.show()
     window.raise_()
     window.activateWindow()

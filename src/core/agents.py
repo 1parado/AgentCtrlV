@@ -41,6 +41,24 @@ class InjectSpec(BaseModel):
     auto_enter: bool = False
 
 
+class ColdStartSpec(BaseModel):
+    """Agent 没在运行时怎么把它拉起来（T3.2 / T3.3）。
+
+    字段与 CONFIG_SCHEMA.md 的 `cold_start` 段一一对应。
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    new_session: bool = False
+    #: hotkey = 窗口就绪后发一次快捷键（如 Ctrl+N 开新会话）
+    #: uia_button = 点界面上的"新会话"按钮（M3 尚未实现，会明确报错而不是静默跳过）
+    #: none = 不处理新会话
+    new_session_method: Literal["hotkey", "uia_button", "none"] = "hotkey"
+    new_session_hotkey: str = "Ctrl+N"
+    ready_timeout: int = 8000
+    ui_ready_timeout: int = 3000
+
+
 class AgentSpec(BaseModel):
     """一个注入目标。字段名与 CONFIG_SCHEMA.md 的 Agent 段一致。"""
 
@@ -59,8 +77,19 @@ class AgentSpec(BaseModel):
     launch: str = ""
     window: WindowSpec = Field(default_factory=WindowSpec)
     inject: InjectSpec = Field(default_factory=InjectSpec)
+    cold_start: ColdStartSpec = Field(default_factory=ColdStartSpec)
     supported_payloads: list[PayloadKind] = Field(default_factory=lambda: ["image", "text"])
     icon: str | None = None
+
+    @property
+    def can_launch(self) -> bool:
+        """配了 launch 才谈得上冷启动。
+
+        注意：GUI Agent 可以靠 shell:AppsFolder / exe 路径启动；
+        寄生在终端里的 CLI Agent 不行（我们不会替用户开终端跑命令），
+        所以它们的 launch 留空，冷启动会自动跳过并说明原因。
+        """
+        return bool(self.launch.strip())
 
     # --- 便捷读取，避免调用方到处走 window./inject. ---
     @property

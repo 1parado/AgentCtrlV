@@ -5,7 +5,8 @@
   避免冷启动 Qt 破坏 <150ms 的菜单预算。
 - 尺寸与半径随 Agent 数量自适应：把半径钉死在 112px 时，超过 8 个条目
   就会沿圆周互相重叠。Agent 是用户配置的，数量不可预设。
-- 单击项目立即确认（T2.3）；Enter/中心确认；Esc/点空白取消且不触碰剪贴板。
+- 单击项目立即确认（T2.3，保持快路径）；Ctrl+点击切换多选、中心或 Enter 确认（T3.1）；
+  Esc/点空白取消且不触碰剪贴板。
 - 绘制不依赖图标库，Agent 可选用 PNG/ICO 图标，缺图时显示首字母。
 """
 
@@ -20,6 +21,8 @@ from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen
 from PySide6.QtWidgets import QDialog
 
 MAX_MENU_ITEMS = 12
+#: PRD：环形菜单单选 + Ctrl 多选，最多 5 个
+MAX_SELECTION = 5
 ITEM_RADIUS = 39
 MIN_RING_RADIUS = 112
 LABEL_SPACE = 46
@@ -59,6 +62,7 @@ class RadialMenu(QDialog):
         self._agents = list(agents)
         self._selected: set[str] = set()
         self._hovered: int | None = None
+        self._hint = ""
         self._angles = self._build_angles(len(agents))
         self._radius, size = compute_geometry(len(agents))
         self._center = size / 2
@@ -97,6 +101,7 @@ class RadialMenu(QDialog):
             self.move(x, y)
         self._selected.clear()
         self._hovered = None
+        self._hint = ""
         self.show()
         self.raise_()
         self.activateWindow()
@@ -159,9 +164,27 @@ class RadialMenu(QDialog):
         agent = self._agents[index]
         if not agent.enabled:
             return
-        # M2 只做单选（T2.3）。Ctrl 多选 + 中心确认属于 T3.1，届时在此加分支。
+
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            # T3.1：Ctrl+点击 = 切换选中，**不**立即发送，等中心/回车确认
+            self._toggle(agent.id)
+            return
+
+        # 单击就是"就它了"：保留 T2.3 的快路径，不为多选牺牲常用场景
         self._selected = {agent.id}
         self._confirm()
+
+    def _toggle(self, agent_id: str) -> None:
+        if agent_id in self._selected:
+            self._selected.discard(agent_id)
+            self._hint = ""
+        elif len(self._selected) >= MAX_SELECTION:
+            # 不静默丢弃用户的操作，明确告诉他到上限了
+            self._hint = f"最多选 {MAX_SELECTION} 个"
+        else:
+            self._selected.add(agent_id)
+            self._hint = ""
+        self.update()
 
     def paintEvent(self, _event) -> None:  # noqa: N802 - Qt API
         painter = QPainter(self)
@@ -214,9 +237,24 @@ class RadialMenu(QDialog):
         painter.drawEllipse(QPointF(self._center, self._center), self._center_radius, self._center_radius)
         painter.setPen(QColor(240, 245, 255))
         painter.setFont(QFont("Segoe UI", 10, QFont.Weight.DemiBold))
-        label = "发送" if self._selected else "选择 Agent"
+        count = len(self._selected)
+        if count == 0:
+            label = "选择 Agent"
+        elif count == 1:
+            label = "发送"
+        else:
+            label = f"发送 {count} 个"
         painter.drawText(
             QRectF(self._center - 44, self._center - 18, 88, 36),
             Qt.AlignmentFlag.AlignCenter,
             label,
         )
+
+        if self._hint:
+            painter.setPen(QColor(255, 196, 120))
+            painter.setFont(QFont("Segoe UI", 8))
+            painter.drawText(
+                QRectF(self._center - 60, self._center + 20, 120, 18),
+                Qt.AlignmentFlag.AlignCenter,
+                self._hint,
+            )

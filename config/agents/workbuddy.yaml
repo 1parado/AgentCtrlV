@@ -1,4 +1,5 @@
 id: workbuddy
+launch: 'C:\Program Files\WorkBuddy\WorkBuddy.exe'
 name: "WorkBuddy"
 type: gui
 enabled: true

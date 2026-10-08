@@ -60,23 +60,27 @@
 
 ## M2：热键 + 环形菜单
 
-> **状态：代码已完成并通过自动化验证；真实 Agent 的人工验收待做。**
+> **状态：代码已完成并通过自动化验证；真实 Agent 验收已用 ZCode 完成。**
 >
 > | 项 | 结果 |
 > |----|------|
 > | T2.1 注册 Alt+V + 冲突检测 | ✅ 已实现；真实注册成功（`python src/main.py --check`），冲突分支单测覆盖 |
-> | T2.2 环形菜单（3 Agent） | ✅ 已实现；offscreen 渲染验证几何与配色，菜单对象常驻 |
+> | T2.2 环形菜单 | ✅ 已实现；几何随条目数自适应、菜单对象常驻；`scripts/preview_menu.py` 可渲染预览图 |
 > | T2.3 单击发送 + Esc 取消 | ✅ 已实现；单击即确认、Esc/点空白取消且无副作用，均有测试 |
-> | M2 自动化验证 | ✅ `pytest tests/` → 194 passed；`pytest -m integration` → 7 passed |
-> | **M2 总验收（真实 Agent）** | ⚠️ **待你验收**——本机**未安装 ChatGPT Desktop 与 Cursor**，无法跑「Alt+V → 选 ChatGPT → 图片进输入框」。见下方说明 |
+> | M2 自动化验证 | ✅ `pytest tests/` → 267 passed；`pytest -m integration` → 7 passed |
+> | **M2 总验收（真实 Agent）** | ✅ **已通过**——对真实应用 ZCode 跑通「Alt+V → 菜单选中 → 内容进输入框」，用截图差判定（`scripts/e2e_real_app.py zcode`，窗口 5476 像素发生变化，无失败通知） |
 
 ### 本机环境实测
 
+菜单里的 Agent 不再是 PRD 里那三个硬编码项，而是由 `config/agents/*.yaml` 决定
+（见 M4）。本机实测装载 **11 个**：5 个 GUI + 6 个终端内 CLI。
+
 | Agent | 本机状态 |
 |-------|----------|
-| ChatGPT Desktop | ❌ 未安装（Store 包与 `%LOCALAPPDATA%\Programs\ChatGPT` 都不存在） |
-| Cursor | ❌ 未安装 |
-| Windows Terminal | ✅ 运行中；窗口标题实测为 `WorkBuddy2API Gateway`（随 shell 变），所以 `title_pattern: "*"` + 进程过滤是**唯一可行**的匹配方式，不是配置缺陷 |
+| ChatGPT Desktop / Cursor | ❌ 未安装（配置里 `enabled: false`，装上后改回 `true` 即进菜单） |
+| ZCode / WorkBuddy / Kimi Code / OpenCode | GUI，按进程名 + 标题定位 |
+| Claude Code / Codex / Gemini / Grok / Kimi / OpenCode CLI | 终端内，由**进程树反推宿主终端**；标题会随 shell 变，所以不靠标题猜 |
+| Windows Terminal | ✅ 运行中；窗口标题实测为 `✳ Claude Code`（随 shell 变），所以 `title_pattern: "*"` + 进程过滤是**唯一可行**的匹配方式，不是配置缺陷 |
 
 **未做真实终端注入的理由**：向一个正在运行的终端粘贴文本会改动用户 shell 的当前状态，
 且无法确认终端里当时跑的是什么（REPL / 编辑器 / TUI 都可能误解释输入）。
@@ -108,16 +112,88 @@
 
 ## M3：多选 + 冷启动
 
+> **状态：代码已完成，自动化验收通过。**
+>
+> | 项 | 结果 |
+> |----|------|
+> | T3.1 Ctrl 多选 + 中心确认 | ✅ Ctrl+点击切换选中（上限 5，PRD 要求）、中心/回车确认、单选快路径保留；目标间 800ms |
+> | T3.2 冷启动流程 | ✅ `launch` → 等窗口（`ready_timeout`）→ 注入；已为本机 5 个 GUI Agent 配上真实 launch 命令 |
+> | T3.3 新会话策略 | ✅ `cold_start.new_session` + `new_session_hotkey`（如 Ctrl+N）；不支持的 `uia_button` **明确报未实现**而不是静默跳过 |
+> | 单元测试 | ✅ 267 passed（新增 44 条覆盖多选/调度/冷启动/新会话） |
+> | **M3 总验收** | ✅ `python scripts/m3_demo.py` → 冷启动 + 多选 3 个依次成功；**桌面空闲时**连跑 3 次全绿 |
+>
+> **验收方式说明**：`scripts/m3_demo.py` 用**自有探针窗口**做目标（`paste_target.py`），
+> 探针会回报"我到底收到了什么"，所以判定不靠肉眼，也不依赖本机装没装某个 AI 应用。
+> 冷启动部分是真启动（真实拉起进程、真等窗口出现）；多选部分走真实环形菜单
+> （程序化 Ctrl+点击 → 中心确认）与真实注入器。
+>
+> ⚠️ **验收必须在桌面空闲时跑。** 这套验收要抢前台，如果你正在别的窗口里干活
+> （实测：WPS 里开着文档），目标窗口会拿不到前台，结果是 `窗口未能激活，已放弃粘贴`
+> ——**这是设计如此，不是 bug**：宁可不粘，也不要把内容粘进一个不知道是什么的窗口。
+> 换句话说，本项目的"成功率"必须在"用户正在干活"之外的条件下度量。
+
+### 关于"投递成功率"要怎么看
+
+`SendInput` 没有回执，投递本身存在偶发丢键。用 `--runs` 采样：
+
+```bash
+python scripts/m3_demo.py --runs 5
+```
+
+**注意区分两类失败**，它们的含义完全不同：
+
+| 现象 | 含义 |
+|------|------|
+| `窗口未能激活，已放弃粘贴` | 前台拿不到（你有别的窗口在前台）。**安全的拒绝**，不是丢件 |
+| 目标只收到 `Ctrl` 没收到 `V` | 前台在**一次 SendInput 的事件之间**被切走。真的丢了 |
+
+第二类是本项目最大的不确定性，M5 的「成功率 >95%」要针对它度量。
+
+### 冷启动的实现边界（重要）
+
+**启动成功 != Agent 就绪。** `os.startfile` / `Popen` 只能证明"启动请求被系统接受了"，
+没有回执——这和 `SendInput` 是同一类问题。所以冷启动的成功判据是
+**窗口真的出现了**，而不是"没抛异常"。
+
+寄生在终端里的 CLI Agent **不支持冷启动**：我们不会替用户开终端执行命令。
+配置层面会明确说明原因，而不是假装启动过。
+
+### 实测修掉的一个真 bug：多选时"越靠前的目标越容易丢键"
+
+第一次跑 M3 验收时现象很怪：
+
+| 运行 | 探针 A | 探针 B | 探针 C |
+|------|--------|--------|--------|
+| 1 | ❌ 只收到 Ctrl | ❌ 只收到 Ctrl | ✅ |
+| 2 | ❌ | ✅ | ✅ |
+| 3 | ✅ | ✅ | ✅ |
+
+规律是**总是靠后的成功**。探针只收到 `<Ctrl>` 的 keydown、没有 `<V>`，
+说明一次 `SendInput` 的事件是**逐条**按当时的焦点窗口投递的——不是原子的。
+菜单刚隐藏时前台还在交接，Ctrl 发给了目标、V 发给了别人。
+
+修法：注入开始前先等 `MENU_CLOSE_SETTLE_S=350ms` 让前台交接完成。
+修完连跑 3 次全部 3/3 通过。
+
+> 教训：这种"总是最后一个成功"的规律**指向自己代码里的时序问题**，
+> 不是"环境间歇性抖动"。别急着把它归类为不可控因素。
+
 ### T3.1 Ctrl 多选 + 中心确认
 - 验收：Ctrl+点多个 → Enter 依次发送，间隔 800ms
+- 实现：`src/ui/radial_menu.py`（选中状态与上限）、
+  `src/core/controller.py`（顺序调度 + 间隔）
 
 ### T3.2 冷启动流程
 - 验收：Agent 未运行时，点击后能启动、等窗口、注入
+- 实现：`src/core/cold_start.py`（launch / wait_for_window / ColdStarter）、
+  `src/core/targeting.py`（共用窗口定位）
 
 ### T3.3 新会话策略
 - 验收：cold_start.new_session=true 时触发 Ctrl+N 或等效操作
+- 实现：`cold_start.start_new_session`，按 `new_session_method` 分派
 
 **M3 总验收**：未启动的 Agent 能冷启动并注入；多选 3 个依次成功
+- 命令：`python scripts/m3_demo.py`
 
 ---
 

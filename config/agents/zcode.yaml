@@ -1,4 +1,5 @@
 id: zcode
+launch: 'C:\Program Files\ZCode\ZCode.exe'
 name: "ZCode"
 type: gui
 enabled: true

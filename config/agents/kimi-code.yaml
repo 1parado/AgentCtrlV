@@ -1,4 +1,5 @@
 id: kimi-code
+launch: 'C:\Program Files\Kimi Code\Kimi Code.exe'
 name: "Kimi Code"
 type: gui
 enabled: true

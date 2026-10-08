@@ -1,26 +1,41 @@
-"""M2 业务链路：热键 → 环形菜单 → 注入（T2.1 / T2.3）。
+"""业务链路：热键 → 环形菜单 → 注入（T2.1 / T2.3 / T3.1 / T3.2）。
 
 职责：
 - 热键触发时**先**把剪贴板内容取成 Payload（菜单打开期间用户可能改剪贴板）
-- 让用户选 Agent，再把 Payload 注入选中目标的输入框
-- 失败必须可见：没找到窗口、Agent 不支持该载荷、注入失败都要报出来
+- 让用户选 Agent（可多选），再把 Payload 逐个注入
+- Agent 没在运行时按配置冷启动（T3.2）
+- 失败必须可见：找不到窗口、不支持该载荷、注入失败、冷启动超时都要报出来
 
 不做的事：热键注册（HotkeyManager）、菜单绘制（RadialMenu）、
-多目标调度间隔（T3.1）、冷启动（T3.2）。
+启动与等待窗口的实现（cold_start.ColdStarter）。
 """
 
 from __future__ import annotations
 
+import time
 from typing import Callable, Protocol
 
+from src.core import targeting
 from src.core.agents import BUILTIN_AGENTS, AgentSpec, find_agent
+from src.core.cold_start import ColdStarter
 from src.core.payload import Payload
-from src.core.window import WindowInfo, WindowLocator
+from src.core.window import WindowLocator
 from src.injectors.base import InjectionOutcome, InjectionStatus
 from src.injectors.clipboard_injector import ClipboardInjector
 from src.utils.logger import get_logger
 
 NotifyFn = Callable[..., None]
+
+#: T3.1：多选时两个目标之间的间隔。留出这段时间是为了让上一个 Agent
+#: 的界面先稳定下来，也避免连续抢前台把上一次粘贴打断。
+MULTI_TARGET_INTERVAL_S = 0.8
+
+#: 菜单刚隐藏、开始注入之前先等一会儿。
+#: 实测依据：不加这一步时，多选里**越靠前的目标越容易收不到 V 键**
+#: （探针只收到 Ctrl 的 keydown）。原因是我们自己的菜单窗口刚隐藏，
+#: 前台还在交接，SendInput 把 Ctrl 发给了目标、把 V 发给了别人——
+#: 一次 SendInput 的事件是**逐条**按当时的焦点窗口投递的，不是原子操作。
+MENU_CLOSE_SETTLE_S = 0.35
 
 
 class ClipboardLike(Protocol):
@@ -46,6 +61,10 @@ class Controller:
         agents: tuple[AgentSpec, ...] = BUILTIN_AGENTS,
         injector_factory: Callable[[AgentSpec], ClipboardInjector] | None = None,
         cursor_pos: Callable[[], object] | None = None,
+        cold_starter: ColdStarter | None = None,
+        interval_s: float = MULTI_TARGET_INTERVAL_S,
+        menu_settle_s: float = MENU_CLOSE_SETTLE_S,
+        sleep: Callable[[float], None] = time.sleep,
         logger=None,
     ) -> None:
         self._clipboard = clipboard
@@ -55,6 +74,10 @@ class Controller:
         self._agents = agents
         self._injector_factory = injector_factory or self._default_injector
         self._cursor_pos = cursor_pos
+        self._cold_starter = cold_starter or ColdStarter(locator)
+        self._interval_s = interval_s
+        self._menu_settle_s = menu_settle_s
+        self._sleep = sleep
         self._last_payload: Payload | None = None
         self._log = logger or get_logger(__name__)
 
@@ -101,7 +124,13 @@ class Controller:
             return
 
         outcomes: list[tuple[str, InjectionOutcome]] = []
-        for agent_id in agent_ids:
+        if agent_ids:
+            # 先让前台从"我们的菜单"交接出去，否则第一个目标最容易丢键
+            self._sleep(self._menu_settle_s)
+        for index, agent_id in enumerate(agent_ids):
+            if index:
+                # T3.1：目标之间留间隔，让上一个 Agent 的界面先稳定下来
+                self._sleep(self._interval_s)
             outcomes.append((agent_id, self._inject(agent_id, payload)))
 
         self._report(outcomes)
@@ -133,37 +162,6 @@ class Controller:
             render_delay_ms=agent.render_delay_ms,
         )
 
-    def _locate_window(self, agent: AgentSpec) -> WindowInfo | None:
-        """定位注入目标窗口。
-
-        判据是 **cli_match 有没有值**，不是 `type`：
-        `type: cli` 在 CONFIG_SCHEMA 里表示"默认只收文本"，
-        而 Windows Terminal 本身就是 `type: cli`，它却是那个窗口本身
-        （没有寄生在终端里的 CLI），所以它走普通的进程+标题匹配。
-
-        有 cli_match 时：CLI 没有自己的窗口，且会动态改写终端标题——
-        靠标题猜等于把失败伪装成成功，所以改成"找到真正在运行的那个
-        CLI 进程，再顺进程树往上找宿主窗口"。
-        """
-        if agent.cli_match:
-            return self._locator.find_host_window(
-                agent.cli_match, terminal_process=agent.process
-            )
-        return self._locator.find(process=agent.process, title_pattern=agent.title_pattern)
-
-    def _missing_window_reason(self, agent: AgentSpec) -> str:
-        if agent.cli_match:
-            return (
-                f"没找到正在运行 {agent.cli_match} 的 {agent.process} 窗口"
-                f"——请先在终端里启动 {agent.name}"
-            )
-        # 把该进程当前真实的窗口标题列出来，让"找不到"变成一步就能修的事
-        return (
-            f"没找到 {agent.name} 的窗口（进程 {agent.process}，"
-            f"标题 {agent.title_pattern!r}）——请先启动它。"
-            f"{self._locator.describe_candidates(agent.process)}"
-        )
-
     def _inject(self, agent_id: str, payload: Payload) -> InjectionOutcome:
         agent = find_agent(agent_id, self._agents)
         if agent is None:
@@ -177,12 +175,22 @@ class Controller:
                 f"{agent.supported_payloads}）",
             )
 
-        window = self._locate_window(agent)
+        warning = ""
+        window = targeting.locate_window(self._locator, agent)
         if window is None:
-            return InjectionOutcome(InjectionStatus.FAILED, self._missing_window_reason(agent))
+            # T3.2：没在跑就按配置冷启动，真的起来了再注入
+            result = self._cold_starter.ensure_window(agent)
+            if result.window is None:
+                return InjectionOutcome(InjectionStatus.FAILED, result.detail)
+            window = result.window
+            warning = result.detail
 
         outcome = self._injector_factory(agent).inject(payload, window)
         self._log.info("%s -> %s", agent.name, outcome)
+        if warning and outcome.ok:
+            # 内容送出去了，但冷启动过程里有件事没成（例如新会话没触发），
+            # 属于"可能未完全成功"，必须让用户看得见。
+            return InjectionOutcome(InjectionStatus.DEGRADED, warning)
         return outcome
 
     def _report(self, outcomes: list[tuple[str, InjectionOutcome]]) -> None:

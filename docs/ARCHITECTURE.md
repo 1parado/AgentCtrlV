@@ -261,6 +261,7 @@ AgentCtrlV/
 │   ├── extract_icons.py       # 从本机 exe 提取图标到 assets/agents/（不入库）
 │   ├── preview_menu.py        # 把环形菜单渲染成 PNG（设计评审用）
 │   ├── e2e_real_app.py        # 对真实应用做端到端验证（含截图差比对）
+│   ├── m3_demo.py             # M3 验收：冷启动 + 多选依次注入（用自有探针）
 │   └── paste_target.py        # 会回报"收到了什么"的 GUI 粘贴目标探针
 ├── src/
 │   ├── main.py                # ✅ M2 装配入口（含 --check 无界面自检）
@@ -274,7 +275,9 @@ AgentCtrlV/
 │   │   ├── window.py          # ✅ T1.2 查找 + force_foreground
 │   │   ├── hotkey.py          # ✅ T2.1 解析/校验/RegisterHotKey
 │   │   ├── agents.py          # ✅ Agent 配置模型 + 从 config/agents/*.yaml 加载
-│   │   ├── controller.py      # ✅ T2.3 热键 → 菜单 → 注入
+│   │   ├── targeting.py       # ✅ 共用：选中的 Agent → 目标窗口 + 失败解释
+│   │   ├── cold_start.py      # ✅ T3.2/T3.3 启动 → 等窗口 → 新会话
+│   │   ├── controller.py      # ✅ T2.3 热键 → 菜单 → 注入（T3.1 多选调度）
 │   │   ├── process.py         # ⬜ M3
 │   │   ├── state_machine.py   # ⬜ M3
 │   │   └── dispatcher.py      # ⬜ M3

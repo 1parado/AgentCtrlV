@@ -107,12 +107,15 @@ class Harness:
     def build(self, **kwargs) -> Controller:
         kwargs.setdefault("cursor_pos", lambda: "cursor")
         kwargs.setdefault("agents", TEST_AGENTS)
+        kwargs.setdefault("injector_factory", lambda agent: self.injector)
+        # 默认不真的睡：多选调度里的 350ms/800ms 等待会让整个套件变慢。
+        # 关心等待的用例自己传 sleep 记录器。
+        kwargs.setdefault("sleep", lambda _seconds: None)
         return Controller(
             clipboard=self.clipboard,
             locator=self.locator,
             menu=self.menu,
             notifier=self.notify,
-            injector_factory=lambda agent: self.injector,
             **kwargs,
         )
 
